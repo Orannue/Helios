@@ -56,6 +56,11 @@ def parse_args():
     )
     parser.add_argument("--output_folder", type=str, default="./output_helios")
     parser.add_argument("--enable_compile", action="store_true")
+    parser.add_argument(
+        "--local_files_only",
+        action="store_true",
+        help="Only load model files from local paths/cache; do not download from Hugging Face.",
+    )
 
     # === Generation parameters ===
     # environment
@@ -253,6 +258,7 @@ def main():
         args.transformer_path,
         subfolder="transformer",
         torch_dtype=args.weight_dtype,
+        local_files_only=args.local_files_only,
     )
     if not args.enable_compile:
         transformer = replace_rmsnorm_with_fp32(transformer)
@@ -273,10 +279,12 @@ def main():
         args.base_model_path,
         subfolder="vae",
         torch_dtype=torch.float32,
+        local_files_only=args.local_files_only,
     )
     scheduler = HeliosScheduler.from_pretrained(
         args.base_model_path,
         subfolder="scheduler",
+        local_files_only=args.local_files_only,
     )
     pipe = HeliosPipeline.from_pretrained(
         args.base_model_path,
@@ -284,6 +292,7 @@ def main():
         vae=vae,
         scheduler=scheduler,
         torch_dtype=args.weight_dtype,
+        local_files_only=args.local_files_only,
     )
 
     if args.lora_path is not None:
