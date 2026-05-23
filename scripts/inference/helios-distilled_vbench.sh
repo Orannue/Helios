@@ -6,7 +6,7 @@ set -euo pipefail
 # Output files are named exactly as VBench expects:
 #   <original prompt>-0.mp4 ... <original prompt>-4.mp4
 
-CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
 
 PROMPT_FILE="${PROMPT_FILE:-vbench_prompts/all_dimension.txt}"
 EXTENDED_PROMPT_FILE="${EXTENDED_PROMPT_FILE:-}"
