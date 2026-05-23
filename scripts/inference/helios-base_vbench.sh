@@ -18,7 +18,7 @@ LORA_PATH="${LORA_PATH:-}"
 PARTIAL_PATH="${PARTIAL_PATH:-}"
 
 NUM_SAMPLES_PER_PROMPT="${NUM_SAMPLES_PER_PROMPT:-5}"
-NUM_FRAMES="${NUM_FRAMES:-99}"
+NUM_FRAMES="${NUM_FRAMES:-726}"
 FPS="${FPS:-24}"
 HEIGHT="${HEIGHT:-384}"
 WIDTH="${WIDTH:-640}"
@@ -27,6 +27,7 @@ GUIDANCE_SCALE="${GUIDANCE_SCALE:-5.0}"
 NUM_INFERENCE_STEPS="${NUM_INFERENCE_STEPS:-50}"
 NUM_LATENT_FRAMES_PER_CHUNK="${NUM_LATENT_FRAMES_PER_CHUNK:-9}"
 ENABLE_COMPILE="${ENABLE_COMPILE:-1}"
+LOCAL_FILES_ONLY="${LOCAL_FILES_ONLY:-1}"
 
 usage() {
   cat <<'USAGE'
@@ -53,6 +54,7 @@ Options:
   --num-latent-frames-per-chunk N
                                 Helios chunk size. Default: 9.
   --no-compile                  Disable --enable_compile.
+  --allow-download              Allow Hugging Face downloads if local files are missing.
 
 Examples:
   bash scripts/inference/helios-base_vbench.sh \
@@ -86,6 +88,7 @@ while [[ $# -gt 0 ]]; do
     --num-inference-steps) NUM_INFERENCE_STEPS="$2"; shift 2 ;;
     --num-latent-frames-per-chunk) NUM_LATENT_FRAMES_PER_CHUNK="$2"; shift 2 ;;
     --no-compile) ENABLE_COMPILE="0"; shift ;;
+    --allow-download) LOCAL_FILES_ONLY="0"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
   esac
@@ -123,6 +126,9 @@ if [[ -n "$PARTIAL_PATH" ]]; then
 fi
 if [[ "$ENABLE_COMPILE" == "1" ]]; then
   CMD+=(--enable_compile)
+fi
+if [[ "$LOCAL_FILES_ONLY" == "1" ]]; then
+  CMD+=(--local_files_only)
 fi
 
 CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" "${CMD[@]}"
