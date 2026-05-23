@@ -13,8 +13,8 @@ EXTENDED_PROMPT_FILE="${EXTENDED_PROMPT_FILE:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-output_helios/vbench_all_dimension_distilled}"
 
 # Local or Hugging Face model paths. Override these from CLI or environment.
-BASE_MODEL_PATH="${BASE_MODEL_PATH:-BestWishYsh/Helios-Distilled}"
-TRANSFORMER_PATH="${TRANSFORMER_PATH:-BestWishYsh/Helios-Distilled}"
+BASE_MODEL_PATH="${BASE_MODEL_PATH:-BestWishYSH/Helios-Distilled}"
+TRANSFORMER_PATH="${TRANSFORMER_PATH:-BestWishYSH/Helios-Distilled}"
 LORA_PATH="${LORA_PATH:-}"
 PARTIAL_PATH="${PARTIAL_PATH:-}"
 
