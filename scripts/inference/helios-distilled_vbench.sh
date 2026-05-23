@@ -7,6 +7,8 @@ set -euo pipefail
 #   <original prompt>-0.mp4 ... <original prompt>-4.mp4
 
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
+NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
+MASTER_PORT="${MASTER_PORT:-29500}"
 
 PROMPT_FILE="${PROMPT_FILE:-vbench_prompts/all_dimension.txt}"
 EXTENDED_PROMPT_FILE="${EXTENDED_PROMPT_FILE:-}"
@@ -62,6 +64,8 @@ Options:
   --no-amplify-first-chunk      Disable --is_amplify_first_chunk.
   --no-compile                  Disable --enable_compile.
   --allow-download              Allow Hugging Face downloads if local files are missing.
+  --nproc-per-node N            Number of prompt-shard workers. Default: 8.
+  --master-port PORT            torchrun master port. Default: 29500.
 
 Examples:
   bash scripts/inference/helios-distilled_vbench.sh \
@@ -99,6 +103,8 @@ while [[ $# -gt 0 ]]; do
     --no-amplify-first-chunk) AMPLIFY_FIRST_CHUNK="0"; shift ;;
     --no-compile) ENABLE_COMPILE="0"; shift ;;
     --allow-download) LOCAL_FILES_ONLY="0"; shift ;;
+    --nproc-per-node) NPROC_PER_NODE="$2"; shift 2 ;;
+    --master-port) MASTER_PORT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
   esac
@@ -106,8 +112,7 @@ done
 
 mkdir -p "$OUTPUT_DIR"
 
-CMD=(
-  python infer_helios.py
+INFER_ARGS=(
   --base_model_path "$BASE_MODEL_PATH"
   --transformer_path "$TRANSFORMER_PATH"
   --sample_type "t2v"
@@ -127,25 +132,33 @@ CMD=(
 )
 
 if [[ -n "$EXTENDED_PROMPT_FILE" ]]; then
-  CMD+=(--extended_prompt_txt_path "$EXTENDED_PROMPT_FILE")
+  INFER_ARGS+=(--extended_prompt_txt_path "$EXTENDED_PROMPT_FILE")
 fi
 if [[ -n "$LORA_PATH" ]]; then
-  CMD+=(--lora_path "$LORA_PATH")
+  INFER_ARGS+=(--lora_path "$LORA_PATH")
 fi
 if [[ -n "$PARTIAL_PATH" ]]; then
-  CMD+=(--partial_path "$PARTIAL_PATH")
+  INFER_ARGS+=(--partial_path "$PARTIAL_PATH")
 fi
 if [[ "$ENABLE_STAGE2" == "1" ]]; then
-  CMD+=(--is_enable_stage2)
+  INFER_ARGS+=(--is_enable_stage2)
 fi
 if [[ "$AMPLIFY_FIRST_CHUNK" == "1" ]]; then
-  CMD+=(--is_amplify_first_chunk)
+  INFER_ARGS+=(--is_amplify_first_chunk)
 fi
 if [[ "$ENABLE_COMPILE" == "1" ]]; then
-  CMD+=(--enable_compile)
+  INFER_ARGS+=(--enable_compile)
 fi
 if [[ "$LOCAL_FILES_ONLY" == "1" ]]; then
-  CMD+=(--local_files_only)
+  INFER_ARGS+=(--local_files_only)
 fi
 
-CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" "${CMD[@]}"
+if [[ "$NPROC_PER_NODE" -gt 1 ]]; then
+  CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" torchrun \
+    --nproc_per_node "$NPROC_PER_NODE" \
+    --master_port "$MASTER_PORT" \
+    infer_helios.py \
+    "${INFER_ARGS[@]}"
+else
+  CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES" python infer_helios.py "${INFER_ARGS[@]}"
+fi
