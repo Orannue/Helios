@@ -134,6 +134,23 @@ def parse_args():
         default=None,
     )
     parser.add_argument(
+        "--extended_prompt_txt_path",
+        type=str,
+        default=None,
+        help="Optional aligned generation prompts. Output names still use prompt_txt_path.",
+    )
+    parser.add_argument(
+        "--num_samples_per_prompt",
+        type=int,
+        default=1,
+        help="Number of videos to sample for each prompt in prompt_txt_path.",
+    )
+    parser.add_argument(
+        "--save_with_vbench_names",
+        action="store_true",
+        help="Save as '<original prompt>-<sample index>.mp4' for VBench evaluation.",
+    )
+    parser.add_argument(
         "--base_image_prompt_path",
         type=str,
         default=None,
@@ -319,61 +336,80 @@ def main():
     if args.prompt_txt_path is not None:
         with open(args.prompt_txt_path, "r") as f:
             prompt_list = [line.strip() for line in f.readlines() if line.strip()]
+        generation_prompt_list = prompt_list
+        if args.extended_prompt_txt_path is not None:
+            with open(args.extended_prompt_txt_path, "r") as f:
+                generation_prompt_list = [line.strip() for line in f.readlines() if line.strip()]
+            if len(generation_prompt_list) != len(prompt_list):
+                raise ValueError(
+                    "extended_prompt_txt_path must have the same number of prompts as prompt_txt_path"
+                )
         if not args.enable_parallelism:
-            prompt_list_with_idx = [(i, prompt) for i, prompt in enumerate(prompt_list)]
+            prompt_list_with_idx = [
+                (i, prompt, generation_prompt_list[i]) for i, prompt in enumerate(prompt_list)
+            ]
             prompt_list_with_idx = prompt_list_with_idx[rank::world_size]
         else:
-            prompt_list_with_idx = [(i, prompt) for i, prompt in enumerate(prompt_list)]
+            prompt_list_with_idx = [
+                (i, prompt, generation_prompt_list[i]) for i, prompt in enumerate(prompt_list)
+            ]
 
-        for idx, prompt in tqdm(prompt_list_with_idx, desc="Processing prompts"):
-            output_path = os.path.join(args.output_folder, f"{idx}.mp4")
-            if os.path.exists(output_path):
-                print("skipping!")
-                continue
-
-            with torch.no_grad():
-                try:
-                    output = pipe(
-                        prompt=prompt,
-                        negative_prompt=args.negative_prompt,
-                        height=args.height,
-                        width=args.width,
-                        num_frames=args.num_frames,
-                        num_inference_steps=args.num_inference_steps,
-                        guidance_scale=args.guidance_scale,
-                        generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        # stage 1
-                        history_sizes=[16, 2, 1],
-                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
-                        keep_first_frame=True,
-                        # stage 2
-                        is_enable_stage2=args.is_enable_stage2,
-                        pyramid_num_inference_steps_list=args.pyramid_num_inference_steps_list,
-                        # stage 3
-                        is_skip_first_chunk=args.is_skip_first_chunk,
-                        is_amplify_first_chunk=args.is_amplify_first_chunk,
-                        # cfg zero
-                        use_zero_init=args.use_zero_init,
-                        zero_steps=args.zero_steps,
-                        # i2v
-                        image=load_image(image_path).resize((args.width, args.height))
-                        if image_path is not None
-                        else None,
-                        image_noise_sigma_min=args.image_noise_sigma_min,
-                        image_noise_sigma_max=args.image_noise_sigma_max,
-                        # v2v
-                        video=load_video(video_path) if video_path is not None else None,
-                        video_noise_sigma_min=args.video_noise_sigma_min,
-                        video_noise_sigma_max=args.video_noise_sigma_max,
-                        # interpolate_prompt
-                        use_interpolate_prompt=args.use_interpolate_prompt,
-                        interpolation_steps=args.interpolation_steps,
-                        interpolate_time_list=interpolate_time_list,
-                    ).frames[0]
-                except Exception:
+        for idx, original_prompt, generation_prompt in tqdm(prompt_list_with_idx, desc="Processing prompts"):
+            for sample_idx in range(args.num_samples_per_prompt):
+                if args.save_with_vbench_names:
+                    output_path = os.path.join(args.output_folder, f"{original_prompt}-{sample_idx}.mp4")
+                else:
+                    output_path = os.path.join(args.output_folder, f"{idx}-{sample_idx}.mp4")
+                if os.path.exists(output_path):
+                    print(f"skipping {output_path}!")
                     continue
-            if not args.enable_parallelism or rank == 0:
-                export_to_video(output, output_path, fps=24)
+
+                with torch.no_grad():
+                    try:
+                        output = pipe(
+                            prompt=generation_prompt,
+                            negative_prompt=args.negative_prompt,
+                            height=args.height,
+                            width=args.width,
+                            num_frames=args.num_frames,
+                            num_inference_steps=args.num_inference_steps,
+                            guidance_scale=args.guidance_scale,
+                            generator=torch.Generator(device="cuda").manual_seed(
+                                args.seed + idx * args.num_samples_per_prompt + sample_idx
+                            ),
+                            # stage 1
+                            history_sizes=[16, 2, 1],
+                            num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
+                            keep_first_frame=True,
+                            # stage 2
+                            is_enable_stage2=args.is_enable_stage2,
+                            pyramid_num_inference_steps_list=args.pyramid_num_inference_steps_list,
+                            # stage 3
+                            is_skip_first_chunk=args.is_skip_first_chunk,
+                            is_amplify_first_chunk=args.is_amplify_first_chunk,
+                            # cfg zero
+                            use_zero_init=args.use_zero_init,
+                            zero_steps=args.zero_steps,
+                            # i2v
+                            image=load_image(image_path).resize((args.width, args.height))
+                            if image_path is not None
+                            else None,
+                            image_noise_sigma_min=args.image_noise_sigma_min,
+                            image_noise_sigma_max=args.image_noise_sigma_max,
+                            # v2v
+                            video=load_video(video_path) if video_path is not None else None,
+                            video_noise_sigma_min=args.video_noise_sigma_min,
+                            video_noise_sigma_max=args.video_noise_sigma_max,
+                            # interpolate_prompt
+                            use_interpolate_prompt=args.use_interpolate_prompt,
+                            interpolation_steps=args.interpolation_steps,
+                            interpolate_time_list=interpolate_time_list,
+                        ).frames[0]
+                    except Exception as exc:
+                        print(f"failed idx={idx} sample={sample_idx}: {exc}")
+                        continue
+                if not args.enable_parallelism or rank == 0:
+                    export_to_video(output, output_path, fps=args.fps)
     elif args.image_prompt_csv_path is not None:
         df = pd.read_csv(args.image_prompt_csv_path)
         if not args.enable_parallelism:
